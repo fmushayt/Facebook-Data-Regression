@@ -1,0 +1,66 @@
+---
+title: 'Deliverable 2: Ordinary Least Squares'
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+### Jacob Holdcraft, Faisal Mushayt, Scott Rozen, Haoyue Feng, Kedi Ye
+
+We decided to start off by looking at the relationship between Total Interactions (The sum of “likes,” “comments,” and “shares” of the post) and Lifetime Post Total Reach (The number of people who saw a page post - unique users). 
+
+# Initial Look
+
+We start by loading the facebook dataset and look at the scatter plot for Total Reach by Total Interactions
+
+```{r}
+# Loading the facebook dataset
+facebook <- read.csv("dataset_Facebook.csv", sep = ";", header = TRUE)
+attach(facebook)
+```
+
+```{r}
+# Plotting Lifetime Post Total Reach by Total Interactions
+plot(Total.Interactions,Lifetime.Post.Total.Reach,ylab="Total Reach", xlab="Total interactions", pch=19,cex=0.1)
+```
+
+There seems to be a trend, but the data is too spread out for us to be able to get a good idea. There are definitely outliers.
+
+# Ordinary least squares
+
+Despite the variability, we will take a look at an initial model. We will fit a regression line using ordinary least squares
+
+```{r}
+# Ordinary LS
+m.ols <- lm(Lifetime.Post.Total.Reach~Total.Interactions)
+summary(m.ols)
+```
+
+We see that b0 and b1 are segnificant, so we do see a positive linear relationship. Though our r-squared value is low, so we are not confident about this model. We build the 95% confidence intervals for our parameters
+
+```{r}
+#95% confidence intervals of OLS
+round(confint(m.ols,level=0.95),7)
+```
+
+Here is their covariancce
+
+```{r}
+# Covariance([bo,b1])
+vcov(m.ols)
+```
+
+We now plot the OLS regression line on the scatter plot
+
+```{r}
+# Scatter plot and OLS fit
+plot(Total.Interactions,Lifetime.Post.Total.Reach,ylab="Total Reach", xlab="Total Interactions", pch=19,cex=0.2)
+abline(lsfit(Total.Interactions,Lifetime.Post.Total.Reach),col="blue")
+```
+
+Generally we see a positive linear relationship. To build an appropriate model using OLS however, we need to clean the data and restrict the range of our variables. 
+
+```{r}
+# Clean up
+detach(facebook)
+```
