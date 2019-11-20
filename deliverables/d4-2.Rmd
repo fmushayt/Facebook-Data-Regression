@@ -1,0 +1,188 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+# Run Initialization
+rm(list = ls())
+library(tidyverse)
+library(MASS)
+source("PreProcessingProject.R")
+```
+
+```{r}
+attach(fb)
+pairs(~Lifetime.Post.Consumers+Page.total.likes+Category+Type+Post.Month+Post.Hour+Post.Weekday+Paid,data=fb,gap=0.4, pch = 19, cex = 0.1)
+X <- cbind(Lifetime.Post.Consumers,Page.total.likes,Category,Type,Post.Month,Post.Hour,Post.Weekday,Paid)
+round(cor(X), 3)
+```
+
+
+```{r}
+
+# Extract inspiration posts data only
+fbCat3 <- fb[fb$Category == "3" & fb$Type == "Photo",]
+
+# Randomize rows
+fbCat3 = fbCat3[sample(nrow(fbCat3)),]
+
+# Form Training and Validation sets
+fbCat3Training = fbCat3[1:75,]; # 50% for the data
+fbCat3Validation = fbCat3[76:150,]; # 50% for the data
+
+# Perform training
+attach(fbCat3Training) 
+
+# Plot scatter matrix 
+pairs(~Lifetime.Post.Consumers+Page.total.likes+Post.Hour+Post.Weekday+Post.Month+Paid,data=fbCat3,gap=0.4, pch = 19, cex = 0.1)
+
+# Correlation matrix
+X <- cbind(Lifetime.Post.Consumers, Page.total.likes, Post.Hour, Post.Weekday, Post.Month, Paid)
+round(cor(X),3)
+```
+
+
+```{r}
+
+# likes model
+like.mls <- lm(Lifetime.Post.Consumers ~ Page.total.likes)
+summary(like.mls)
+
+# month model
+month.mls <- lm(Lifetime.Post.Consumers ~ Post.Month)
+summary(month.mls)
+```
+
+
+```{r}
+# Diagnostics -----------------------------------------------------------------------------------------------
+
+# Standarized Residuals
+# vs Ground Truth
+LikeStanResMLS <- rstandard(like.mls)
+MonthStanResMLS <- rstandard(month.mls)
+par(mfrow=c(1,1))
+plot(Lifetime.Post.Consumers,LikeStanResMLS,xlab="Lifetime Post Consumers", ylab="Standardized Residuals", col="blue", pch = 19, cex = 0.5)
+points(Lifetime.Post.Consumers, MonthStanResMLS,xlab="Lifetime Post Consumers", ylab="Standardized Residuals", col="red", pch = 19, cex = 0.5 )
+abline(h=2,lty=2)
+abline(h=-2,lty=2)
+legend(2700, 1, legend=c("Likes MLS", "Month MLS"), col=c("blue", "red"), lty=0, cex=1, pch=19)
+
+```
+
+
+```{r}
+# vs Fitted
+par(mfrow=c(1,1))
+plot(fitted(like.mls),LikeStanResMLS,xlab="Fitted", ylab="Standardized Residuals", col="blue", pch = 19, cex = 0.5)
+points(fitted(month.mls),MonthStanResMLS,xlab="Fitted", ylab="Standardized Residuals", col="red", pch = 19, cex = 0.5)
+abline(h=2,lty=2)
+abline(h=-2,lty=2)
+legend(2700, 1, legend=c("MLS",  "Month MLS"), col=c("blue", "red"), lty=0, cex=1, pch=19)
+```
+
+
+```{r}
+# Test of Normality for Standarized Residuals of MLS
+q1 <- qqnorm(LikeStanResMLS, plot.it = FALSE)
+plot(range(q1$x, q1$x), range(q1$y, q1$y), ylab = "Standardized Residuals", xlim = c(-3,3),  ylim = c(-2,4), xlab = "Theoretical Quantiles" ) 
+points(q1)
+points(q1,col="blue", pch = 19, cex = 0.5)
+qqline(LikeStanResMLS,lty = 2)
+legend(2, 0, legend=c("Like MLS"), col=c("blue"), lty=0, cex=1, pch=19)
+```
+
+
+```{r}
+# Test of Normality for Standarized Residuals of MLS
+q1 <- qqnorm(MonthStanResMLS, plot.it = FALSE)
+plot(range(q1$x, q1$x), range(q1$y, q1$y), ylab = "Standardized Residuals", xlim = c(-3,3),  ylim = c(-2,4), xlab = "Theoretical Quantiles" ) 
+points(q1)
+points(q1,col="red", pch = 19, cex = 0.5)
+qqline(MonthStanResMLS,lty = 2)
+legend(2, 0, legend=c("Month MLS"), col=c("red"), lty=0, cex=1, pch=19)
+```
+
+
+```{r}
+# Histogram of QMLS and QuartLS
+par(mfrow=c(1,2))
+hist(LikeStanResMLS,100)
+hist(MonthStanResMLS, 100)
+```
+
+
+
+```{r}
+# Validation ------------------------------------------------------------------------------------------------
+
+# Residuals for training data
+LikeResMLS <- resid(like.mls)
+
+# Residuals for validation data
+Likeoutput<-predict(like.mls, se.fit = TRUE, newdata=data.frame(likes=fbCat3Validation$Page.total.likes))
+LikeResMLSValidation <- fbCat3Validation$Lifetime.Post.Consumers - Likeoutput$fit
+
+# Plot residuals
+par(mfrow=c(1,1))
+plot(Lifetime.Post.Consumers,LikeResMLS,xlab="Lifetime Post Consumers", ylab="Like Residuals",   col=c("blue"), lty=0, cex=1, pch=19)
+points(fbCat3Validation$Lifetime.Post.Consumers,LikeResMLSValidation,xlab="Lifetime Post Consumers", ylab="Residuals",col="red", lty=0, cex=1, pch=19)
+legend(2700, 1.75, legend=c("Training","Validation"), col=c("blue","red"), lty=0, cex=1, pch=19)
+```
+
+```{r}
+plot(Likeoutput$fit, fbCat3Validation$Lifetime.Post.Consumers, xlab="Validation Predicted Y", ylab=" Validation Y",   col=c("blue"), lty=0, cex=1, pch=19)
+```
+
+```{r}
+# Validation ------------------------------------------------------------------------------------------------
+
+# Residuals for training data
+MonthResMLS <- resid(month.mls)
+
+# Residuals for validation data
+Monthoutput<-predict(month.mls, se.fit = TRUE, newdata=data.frame(month=fbCat3Validation$Post.Month))
+MonthResMLSValidation <- fbCat3Validation$Lifetime.Post.Consumers - Monthoutput$fit
+
+# Plot residuals
+par(mfrow=c(1,1))
+plot(Lifetime.Post.Consumers,MonthResMLS,xlab="Lifetime Post Consumers", ylab="Month Residuals",   col=c("blue"), lty=0, cex=1, pch=19)
+points(fbCat3Validation$Lifetime.Post.Consumers,MonthResMLSValidation,xlab="Lifetime Post Consumers", ylab="Residuals",col="red", lty=0, cex=1, pch=19)
+legend(2700, 400, legend=c("Training","Validation"), col=c("blue","red"), lty=0, cex=1, pch=19)
+```
+
+```{r}
+plot(output$fit, fbCat3Validation$Lifetime.Post.Consumers, xlab="Validation Predicted Y", ylab=" Validation Y",   col=c("blue"), lty=0, cex=1, pch=19)
+```
+
+
+```{r}
+# Mean Square Error for training data
+mean((LikeResMLS)^2)
+
+# Mean Square Error for validation data
+mean((LikeResMLSValidation)^2)
+
+# Relative Mean Square Error for validation data
+mean((LikeResMLSValidation)^2) / mean((fbCat3Validation$Lifetime.Post.Consumers)^2)
+```
+
+
+```{r}
+# Mean Square Error for training data
+mean((MonthResMLS)^2)
+
+# Mean Square Error for validation data
+mean((MonthResMLSValidation)^2)
+
+# Relative Mean Square Error for validation data
+mean((MonthResMLSValidation)^2) / mean((fbCat3Validation$Lifetime.Post.Consumers)^2)
+```
+
+
+
+
+```{r}
+detach(fbCat3Training)
+```
