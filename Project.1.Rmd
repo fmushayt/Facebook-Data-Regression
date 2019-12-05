@@ -1,0 +1,168 @@
+---
+title: "Project1"
+author: "Haoyue Feng"
+date: "12/4/2019"
+output: html_document
+---
+
+```{r }
+
+library(glmnet)
+library(MASS)
+#library(tidyverse)
+library(tidyr)
+library("dplyr")
+source("PreProcessingProject.R")
+head(fb)
+
+```
+
+
+```{r}
+#LASSO & RIDGE REGREESION
+X = model.matrix(Lifetime.Post.Consumers~.,fb)[,-1]
+head(X)
+Y = fb$Lifetime.Post.Consumers
+Training = sample(1:nrow(X),(nrow(X)+1)/2)
+length(Training)
+Validation = (-Training)
+
+grid = 10^seq(5,-2,length = 50)
+ridge.mod = glmnet(X[Training,],Y[Training],alpha = 0, lambda = grid)
+lasso.mod = glmnet(X[Training,],Y[Training],alpha = 1, lambda = grid)
+ridge.mod$lambda
+cv.out.ridge=cv.glmnet(X[Training ,],Y[Training ],alpha=0)
+cv.out.lasso = cv.glmnet(X[Training ,],Y[Training ],alpha=1)
+#Find best lambda by cross validation
+(bestlam.ridge=cv.out.ridge$lambda.min)
+(bestlam.lasso = cv.out.lasso$lambda.min)
+#ridge.pred.coef=predict(ridge.mod,s=bestlam.ridge,newx=X[Validation,],type = "coefficient" )
+lasso.pred.coef=predict(lasso.mod,s=bestlam.lasso,newx=X[Validation,],type = "coefficient" )
+ridge.pred = predict(ridge.mod,s=bestlam.ridge,newx=X[Validation,], type = "response")
+lasso.pred = predict(lasso.mod,s=bestlam.lasso,newx=X[Validation,], type = "response")
+#Relative MSE
+mean((ridge.pred-Y[Validation])^2)/mean(Y[Validation]^2)
+
+mean((lasso.pred-Y[Validation])^2)/mean(Y[Validation]^2)
+#
+```
+
+
+
+```{r}
+#SEGMENTING BY CATEGORY3 AND PHOTO
+
+attach(fb)
+pairs(~Lifetime.Post.Consumers+Page.total.likes+Category+Type+Post.Month+Post.Hour+Post.Weekday+Paid,data=fb,gap=0.4, pch = 19, cex = 0.1)
+X1 <- cbind(Lifetime.Post.Consumers,Page.total.likes,Category,Type,Post.Month,Post.Hour,Post.Weekday,Paid)
+round(cor(X1), 3)
+detach(fb)
+# Extract inspiration posts data only
+fbCat3 <- fb[fb$Category == "3" & fb$Type == "Photo",]
+# Randomize rows
+fbCat3 = fbCat3[sample(nrow(fbCat3)),]
+
+################Add Time Variable##############
+
+# attach(fb.time)
+# pairs(~Lifetime.Post.Consumers+Page.total.likes+Category+Type+Post.Month+Post.Hour+Post.Weekday+Paid + RefTime,data=fb,gap=0.4, pch = 19, cex = 0.1)
+# X1 <- cbind(Lifetime.Post.Consumers,Page.total.likes,Category,Type,Post.Month,Post.Hour,Post.Weekday,Paid,RefTime)
+# round(cor(X1), 3)
+
+# # Extract inspiration posts data only
+# fbCat3 <- fb.time[fb.time$Category == "3" & fb.time$Type == "Photo",]
+# # Randomize rows
+# fbCat3 = fbCat3[sample(nrow(fbCat3)),]
+##################################################
+
+# Form Training and Validation sets
+fbCat3Training = fbCat3[1:75,]; # 50% for the data
+fbCat3Validation = fbCat3[76:150,]; # 50% for the data
+detach(fb.time)
+# Perform training
+attach(fbCat3Training) 
+#Correlarion
+X3 <- cbind(Lifetime.Post.Consumers, Page.total.likes, Post.Hour, Post.Weekday, Post.Month, Paid, RefTime)
+round(cor(X3),3)
+detach(fbCat3Training)
+
+#################Time Series####################
+library(nlme)
+
+acf(residuals(month.mls))
+acf(residuals(month.mls),type = "partial")
+m.gls <- gls(Lifetime.Post.Consumers ~ Post.Month , 
+          correlation=corARMA(p=1),method="ML",data = fbCat3Training)
+summary(m.gls)
+anova(month.mls,m.gls)
+
+
+```
+
+```{r}
+# Post.Month model
+
+month.mls <- lm(Lifetime.Post.Consumers ~ Post.Month, data = fbCat3Training)
+summary(month.mls)
+
+# residuals of month model
+MonthResMLS <- resid(month.mls)
+Monthoutput <- predict(month.mls, se.fit = TRUE, newdata=data.frame(month=fbCat3Validation$Post.Month))
+MonthResMLSValidation <- fbCat3Validation$Lifetime.Post.Consumers - Monthoutput$fit
+mean((MonthResMLSValidation)^2) / mean((fbCat3Validation$Lifetime.Post.Consumers)^2)
+
+##################log transformation###################
+LogY = log(fbCat3Training$Lifetime.Post.Consumers)
+LogMonth = log(fbCat3Training$Post.Month)
+logmonth.mls <-lm(LogY~LogMonth)
+summary(logmonth.mls)
+
+LogMonthoutput = predict(logmonth.mls, se.fit = TRUE, newdata=data.frame(month=log(fbCat3Validation$Post.Month)))
+#Taking exponential of fitted value
+LogMonthResMLSValidation <- fbCat3Validation$Lifetime.Post.Consumers - exp(LogMonthoutput$fit)
+mean((LogMonthResMLSValidation)^2) / mean((fbCat3Validation$Lifetime.Post.Consumers)^2)
+
+ ################weighted month model#####################3
+wts = 1/fitted(lm(abs(residuals(month.mls))~fitted(month.mls)))^2
+
+wts1 = 1/fitted(lm(abs(residuals(month.mls))~fbCat3Training$Post.Month))^2
+
+#wts = 1/sd()
+wts.month.mls = lm(Lifetime.Post.Consumers ~ Post.Month, data = fbCat3Training,weights = wts)
+summary(wts.month.mls)
+
+# Residuals for training data
+WtsMonthResMLS <- resid(wts.month.mls)
+# Residuals for validation data
+WtsMonthoutput<-predict(wts.month.mls, se.fit = TRUE, newdata=data.frame(month=fbCat3Validation$Post.Month))
+WtsMonthResMLSValidation <- fbCat3Validation$Lifetime.Post.Consumers - WtsMonthoutput$fit
+mean((WtsMonthResMLSValidation)^2) / mean((fbCat3Validation$Lifetime.Post.Consumers)^2)
+
+detach(fbCat3Training)
+
+
+# Page.total.likes model
+like.mls <- lm(Lifetime.Post.Consumers ~ Page.total.likes, data = fbCat3Training)
+summary(like.mls)
+# residuals of like model
+LikeResMLS <- resid(like.mls)
+Likeoutput <- predict(like.mls, se.fit = TRUE, newdata=data.frame(like=fbCat3Validation$Page.total.likes))
+LikeResMLSValidation <- fbCat3Validation$Lifetime.Post.Consumers - Likeoutput$fit
+mean((LikeResMLSValidation)^2) / mean((fbCat3Validation$Lifetime.Post.Consumers)^2)
+
+
+```
+
+
+```{r}
+
+
+
+```
+
+
+
+
+
+
+
