@@ -1,0 +1,137 @@
+---
+title: "HW9"
+author: "Haoyue Feng"
+date: "12/9/2019"
+output:
+  word_document: default
+  pdf_document: default
+---
+#3.a
+```{r,echo=FALSE}
+library(leaps)
+library(MASS)
+library(nlme)
+library(reams)
+pgatour = read.csv("~/Downloads/BU/MA575/pgatour2006.csv",  header = TRUE)
+attach(pgatour)
+full.model = lm(log(PrizeMoney)~DrivingAccuracy+GIR+PuttingAverage+BirdieConversion+SandSaves+Scrambling+PuttsPerRound,data = pgatour)
+pga = data.frame(log(PrizeMoney),DrivingAccuracy,GIR,PuttingAverage,BirdieConversion,SandSaves,Scrambling,PuttsPerRound)
+cor(pga)
+X = model.matrix(full.model)[,-1]
+######exhaustive search based on adjr2######
+a.leaps = leaps(X,log(PrizeMoney),method = "adjr2")
+best.model.adjr2 = a.leaps$which[(which(a.leaps$adjr2 == max(a.leaps$adjr2))),]
+max(a.leaps$adjr2)# 0.54585204
+best.model.adjr2#1st and 3rd are dropped
+
+######3exhaustive search based on AIC,AICc,BIC#########
+(a.ic = ic.min(log(PrizeMoney), X, pvec = 1:(ncol(X) + 1)))
+#####AIC#####
+min(a.ic$aic)
+a.ic$best.aic
+#####AICc####
+min(a.ic$aicc)
+a.ic$best.aicc
+#####BIC#####
+min(a.ic$bic)
+a.ic$best.bic
+```
+
+Full model:log(PrizeMoney)~DrivingAccuracy+GIR+PuttingAverage+BirdieConversion+SandSaves+Scrambling+PuttsPerRound
+#1
+Model Selected By adjr^2\\
+Best Adjusted R^2:0.54585204 \\
+Model:$$log(PrizeMoney) \sim GIR+BirdieConversion+SandSaves+Scrambling+PuttsPerRound $$
+#2
+Model Selected By AIC\\
+Least AIC:-156.6416\\
+Model:$$log(PrizeMoney) \sim GIR+BirdieConversion+SandSaves+Scrambling+PuttsPerRound $$
+#3
+Model Selected By AICc\\
+Least AICc:41.95413\\
+Model:$$log(PrizeMoney) \sim GIR+BirdieConversion+SandSaves+Scrambling+PuttsPerRound $$
+#4
+Model Selected By BIC\\
+Least BIC:-142.1983
+Model:$$log(PrizeMoney) \sim GIR+BirdieConversion+Scrambling$$
+
+#3.b
+
+```{r,echo=FALSE}
+##########Backward Selection With AIC#############
+step(full.model,direction = "backward")
+```
+
+Model selected by backward selection using AIC is: $$log(PrizeMoney) \sim GIR + PuttsPerRound + BirdieConversion + Scrambling + SandSaves  $$
+
+
+
+```{r,echo=FALSE}
+##########Backward Selection With BIC#############
+knitr::opts_chunk$set(echo = FALSE)
+step(full.model,direction = "backward",k = log(nrow(X)))
+
+```
+
+Model selected by backward selection using BIC is: $$log(PrizeMoney) \sim GIR  + BirdieConversion + Scrambling  $$
+
+
+
+#3.c
+
+```{r,echo=FALSE}
+##########Forward Selection With AIC#############
+step(lm(log(PrizeMoney)~1),log(PrizeMoney)~DrivingAccuracy+GIR+PuttingAverage+BirdieConversion+SandSaves+Scrambling+PuttsPerRound,direction = "forward")
+```
+Model selected by foward selection using AIC is: $$log(PrizeMoney) \sim GIR + PuttsPerRound + BirdieConversion + Scrambling + SandSaves $$
+
+```{r,echo=FALSE}
+##########Forward Selection With BIC#############
+step(lm(log(PrizeMoney)~1),log(PrizeMoney)~DrivingAccuracy+GIR+PuttingAverage+BirdieConversion+SandSaves+Scrambling+PuttsPerRound,direction = "forward",k = log(nrow(X)))
+```
+
+Model selected by foward selection using BIC is: $$log(PrizeMoney) \sim GIR + PuttsPerRound + BirdieConversion + Scrambling  $$
+
+
+#3.d
+
+The difference between a and c are the models simplified via BIC which are
+$$log(PrizeMoney) \sim GIR + PuttsPerRound + BirdieConversion + Scrambling  $$ 
+and 
+$$log(PrizeMoney) \sim GIR+BirdieConversion+Scrambling$$
+The reason is that forward selection using BIC starts with null model and adds single variable if the addition lowers the BIC at each step. It will not delete the one added in previous steps, even if the deletion can give a simpler model with lower BIC. So it is very likely for this algorithm to miss important models. Model selection by exhaustive search will go through all possible subsets of predictors so its result model could be more accurate. 
+
+As for a and b, backward selection starts from full model and delete one predictor at a time if the deletion lowers the BIC, hich is more likely to find best model. It usually test different models from forward selection. The safe way to find the best models is to run running forward/backward at the same time.
+
+
+#3e
+
+```{r,echo=FALSE}
+bic.model = lm(log(PrizeMoney) ~ GIR+BirdieConversion+Scrambling)
+aic.model = lm(log(PrizeMoney) ~GIR+BirdieConversion+SandSaves+Scrambling+PuttsPerRound)
+anova(bic.model,aic.model)
+```
+
+Based on the model selected by via best subsets regression at a, we can determine to choose the best model between the two in the output. First there is no strong correlations between variables. Then we can check the significance of SandSaves and PuttsPerRound by annova function. The output demonstrates that at $\alpha$ = 0.5, there is insufficient evidence to indicate that "SandSaves" and "PuttsPerRound" are significant. So we might drop these two predictors to avoid overfitting. Thus, the model I recommend is 
+$$log(PrizeMoney) \sim GIR + BirdieConversion + Scrambling $$
+
+#3f
+
+```{r}
+summary(bic.model)
+#PrizeMoney mean
+exp(-11.08314)
+```
+
+Tntercept means that the expected value of log(PrizeMoney) is -11.08314  or expected value of PrizeMoney is 1.536928e-05.\\
+The coefficient for GIR means that one unit increase/decrease in GIR causes 0.15658 increase/decrease in log(PrizeMoney).\\
+The coefficient for BirdieConversion means that one unit increase/decrease in GIR causes 0.20625 increase/decrease in log(PrizeMoney).\\
+The coefficient for Scrambling means that one unit increase/decrease in GIR causes 0.09178  increase/decrease in log(PrizeMoney).
+
+Yes, since PrizeMoney is in the log form, small change in the predictors' value can lead to tremendous change in PrizeMoney.
+
+
+
+```{r,echo=FALSE}
+detach(pgatour)
+```
